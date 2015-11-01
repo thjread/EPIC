@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">EPIC</string>
+    <string name="source_name">EPIC</string>
+    <string name="source_description">Images of Earth from NASA\'s DSCOVR satellite</string>
+</resources>
