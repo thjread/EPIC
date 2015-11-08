@@ -19,10 +19,12 @@ package thjread.epic;
 import java.util.List;
 
 import retrofit.http.GET;
+import retrofit.http.Path;
+import retrofit.http.Query;
 
 interface EpicService {
     @GET("/api/images.php")
-    List<Photo> getPhotos();
+    List<Photo> getPhotos(@Query("date") String date);
 
     static class Photo {
         String image;

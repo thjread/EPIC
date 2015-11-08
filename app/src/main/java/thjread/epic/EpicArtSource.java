@@ -60,10 +60,8 @@ public class EpicArtSource extends RemoteMuzeiArtSource {
         return ans;
     }
 
-    @Override
-    protected void onTryUpdate(int reason) throws RetryException {
-        String oldToken = (getCurrentArtwork() != null) ? getCurrentArtwork().getToken() : null;
-
+    private Photo getBestPhoto(float timeRange /*in minutes*/) {
+        Date date = new Date();
         RestAdapter restAdapter = new RestAdapter.Builder()
                 .setEndpoint("http://epic.gsfc.nasa.gov/")
                 .setErrorHandler(new ErrorHandler() {
@@ -79,41 +77,50 @@ public class EpicArtSource extends RemoteMuzeiArtSource {
                     }
                 })
                 .build();
-
         EpicService service = restAdapter.create(EpicService.class);
-        List<Photo> photos = service.getPhotos();
+        SimpleDateFormat apiFormat = new SimpleDateFormat("yyyy-M-d");
 
-        if (photos == null || photos == null) {
-            throw new RetryException();
-        }
-
-        if (photos.size() == 0) {
-            Log.w(TAG, "No photos returned from API.");
-            scheduleUpdate(System.currentTimeMillis() + ROTATE_TIME_MILLIS);
-            return;
-        }
-
+        float bestDate = -1.0f;
         Photo photo = null;
-        SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-        format.setTimeZone(TimeZone.getTimeZone("GMT"));
-        try {
-            long bestDate = -1;
-
-            for (Photo p : photos) {
-                Date d = format.parse(p.date);
-                if (bestDate == -1) {
-                    photo = p;
-                    bestDate = dateDiff(d);
-                } else {
-                    if (dateDiff(d) < bestDate) {
+        int days = 0;
+        while ((bestDate < 0.0f || bestDate > timeRange*60*1000) && (days <= 6)) {
+            List<Photo> photos = service.getPhotos(apiFormat.format(date));
+            if (photos.size() == 0) {
+                date.setTime(date.getTime()-24*60*60*1000);
+                days++;
+                continue;
+            }
+            SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            format.setTimeZone(TimeZone.getTimeZone("GMT"));
+            try {
+                for (Photo p : photos) {
+                    Date d = format.parse(p.date);
+                    if (bestDate < 0.0f) {
                         photo = p;
                         bestDate = dateDiff(d);
+                    } else {
+                        if (dateDiff(d) < bestDate) {
+                            photo = p;
+                            bestDate = dateDiff(d);
+                        }
                     }
                 }
+            } catch (ParseException e) {
+                photo = photos.get(photos.size() - 1);
             }
-        } catch (ParseException e) {
-            photo = photos.get(photos.size() - 1);
+
+            date.setTime(date.getTime()-24*60*60*1000);
+            days++;
         }
+
+        return photo;
+    }
+
+    @Override
+    protected void onTryUpdate(int reason) throws RetryException {
+        String oldToken = (getCurrentArtwork() != null) ? getCurrentArtwork().getToken() : null;
+
+        Photo photo = getBestPhoto(60);
 
         String image_url = "http://i0.wp.com/"
                 + "epic.gsfc.nasa.gov/epic-archive/jpg/"
@@ -122,6 +129,8 @@ public class EpicArtSource extends RemoteMuzeiArtSource {
 
         SimpleDateFormat outFormat = new SimpleDateFormat("yyyy-M-d h:mm aa");
         outFormat.setTimeZone(TimeZone.getDefault());
+        SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        format.setTimeZone(TimeZone.getTimeZone("GMT"));
         String date = null;
         try {
             date = outFormat.format(format.parse(photo.date));
