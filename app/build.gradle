@@ -7,7 +7,7 @@ android {
     defaultConfig {
         applicationId "thjread.epic"
         minSdkVersion 15
-        targetSdkVersion 23
+        targetSdkVersion 22
         versionCode 1
         versionName "1.0"
     }
@@ -20,7 +20,10 @@ android {
 }
 
 dependencies {
-    compile 'com.squareup.retrofit:retrofit:1.8.0'
+    compile 'com.google.code.gson:gson:2.4'
+    compile 'com.squareup.retrofit:retrofit:2.0.0-beta2'
+    compile 'com.squareup.retrofit:converter-gson:2.0.0-beta2'
+    compile 'com.squareup.okhttp:okhttp:2.7.0'
     compile 'com.google.android.apps.muzei:muzei-api:+'
     compile fileTree(dir: 'libs', include: ['*.jar'])
     testCompile 'junit:junit:4.12'

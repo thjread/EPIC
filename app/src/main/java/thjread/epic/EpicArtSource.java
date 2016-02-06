@@ -24,15 +24,19 @@ import android.util.Log;
 import com.google.android.apps.muzei.api.Artwork;
 import com.google.android.apps.muzei.api.RemoteMuzeiArtSource;
 
+import org.xml.sax.ErrorHandler;
+
+import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.text.ParseException;
 import java.util.List;
 import java.util.Date;
 import java.util.TimeZone;
 
-import retrofit.ErrorHandler;
-import retrofit.RestAdapter;
-import retrofit.RetrofitError;
+import retrofit.Call;
+import retrofit.GsonConverterFactory;
+import retrofit.Response;
+import retrofit.Retrofit;
 
 import static thjread.epic.EpicService.Photo;
 
@@ -40,7 +44,7 @@ public class EpicArtSource extends RemoteMuzeiArtSource {
     private static final String TAG = "Epic";
     private static final String SOURCE_NAME = "EpicArtSource";
 
-    private static final int ROTATE_TIME_MILLIS = 30 * 60 * 1000; // rotate every half hour
+    private static final int ROTATE_TIME_MILLIS = 20 * 60 * 1000; // rotate every 20 mins
 
     public EpicArtSource() {
         super(SOURCE_NAME);
@@ -62,53 +66,50 @@ public class EpicArtSource extends RemoteMuzeiArtSource {
 
     private Photo getBestPhoto(float timeRange /*in minutes*/) {
         Date date = new Date();
-        RestAdapter restAdapter = new RestAdapter.Builder()
-                .setEndpoint("http://epic.gsfc.nasa.gov/")
-                .setErrorHandler(new ErrorHandler() {
-                    @Override
-                    public Throwable handleError(RetrofitError retrofitError) {
-                        int statusCode = retrofitError.getResponse().getStatus();
-                        if (retrofitError.getKind() == RetrofitError.Kind.NETWORK
-                                || (500 <= statusCode && statusCode < 600)) {
-                            return new RetryException();
-                        }
-                        scheduleUpdate(System.currentTimeMillis() + ROTATE_TIME_MILLIS);
-                        return retrofitError;
-                    }
-                })
+
+        Retrofit retrofit = new Retrofit.Builder()
+                .baseUrl("http://epic.gsfc.nasa.gov/")
+                .addConverterFactory(GsonConverterFactory.create())
                 .build();
-        EpicService service = restAdapter.create(EpicService.class);
+
+        EpicService service = retrofit.create(EpicService.class);
         SimpleDateFormat apiFormat = new SimpleDateFormat("yyyy-M-d");
 
         float bestDate = -1.0f;
         Photo photo = null;
         int days = 0;
         while ((bestDate < 0.0f || bestDate > timeRange*60*1000) && (days <= 6)) {
-            List<Photo> photos = service.getPhotos(apiFormat.format(date));
-            if (photos.size() == 0) {
-                date.setTime(date.getTime()-24*60*60*1000);
-                days++;
-                continue;
-            }
-            SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-            format.setTimeZone(TimeZone.getTimeZone("GMT"));
+            Call call = service.getPhotos(apiFormat.format(date));
             try {
-                for (Photo p : photos) {
-                    Date d = format.parse(p.date);
-                    if (bestDate < 0.0f) {
-                        photo = p;
-                        bestDate = dateDiff(d);
-                    } else {
-                        if (dateDiff(d) < bestDate) {
+                Response<List<Photo>> r = call.execute();
+                List<Photo> photos = r.body();
+                if (photos.size() == 0) {
+                    date.setTime(date.getTime()-24*60*60*1000);
+                    days++;
+                    continue;
+                }
+                SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                format.setTimeZone(TimeZone.getTimeZone("GMT"));
+                try {
+                    for (Photo p : photos) {
+                        Date d = format.parse(p.date);
+                        if (bestDate < 0.0f) {
                             photo = p;
                             bestDate = dateDiff(d);
+                        } else {
+                            if (dateDiff(d) < bestDate) {
+                                photo = p;
+                                bestDate = dateDiff(d);
+                            }
                         }
                     }
+                } catch (ParseException e) {
+                    photo = photos.get(photos.size() - 1);
                 }
-            } catch (ParseException e) {
-                photo = photos.get(photos.size() - 1);
             }
-
+            catch (IOException e) {
+                Log.e("EPIC", e.getMessage());
+            }
             date.setTime(date.getTime()-24*60*60*1000);
             days++;
         }
